@@ -1,5 +1,5 @@
 """
-Enterprise AI Platform
+Enterprise AI Platform.
 
 Main FastAPI application entrypoint.
 """
@@ -15,79 +15,89 @@ from app.common.logging.middleware import LoggingMiddleware
 from app.core.config import settings
 from app.core.lifespan import lifespan
 
-# ==============================================================================
-# Logger
-# ==============================================================================
 
 logger = get_logger(__name__)
 
-# ==============================================================================
-# FastAPI App
-# ==============================================================================
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description="Enterprise Multi-Agent AI Platform",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
-    debug=settings.DEBUG,
-    lifespan=lifespan,
-)
+def create_application() -> FastAPI:
+    """Create and configure the FastAPI application."""
 
-# ==============================================================================
-# Middleware
-# ==============================================================================
+    application = FastAPI(
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
+        description=settings.APP_DESCRIPTION,
+        docs_url="/docs" if not settings.is_production else None,
+        redoc_url="/redoc" if not settings.is_production else None,
+        openapi_url="/openapi.json"
+        if not settings.is_production
+        else None,
+        debug=settings.DEBUG,
+        lifespan=lifespan,
+    )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=[
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS",
+        ],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
-app.add_middleware(LoggingMiddleware)
+    application.add_middleware(LoggingMiddleware)
 
-# ==============================================================================
-# Routers
-# ==============================================================================
+    application.include_router(
+        api_router,
+        prefix="/api",
+    )
 
-app.include_router(
-    api_router,
-    prefix="/api",
-)
+    @application.get(
+        "/",
+        tags=["System"],
+        summary="Application information",
+    )
+    async def root() -> dict[str, str]:
+        return {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT.value,
+            "status": "running",
+        }
 
-# ==============================================================================
-# Root Endpoint
-# ==============================================================================
+    @application.get(
+        "/health",
+        tags=["System"],
+        summary="Application health check",
+    )
+    async def health() -> dict[str, str]:
+        return {
+            "status": "healthy",
+        }
 
-@app.get("/", tags=["Root"])
-async def root() -> dict[str, str]:
-    return {
-        "name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "status": "running",
-    }
+    @application.get(
+        "/ready",
+        tags=["System"],
+        summary="Application readiness check",
+    )
+    async def readiness() -> dict[str, str]:
+        return {
+            "status": "ready",
+        }
+
+    return application
 
 
-# ==============================================================================
-# Health Check
-# ==============================================================================
+app = create_application()
 
-@app.get("/health", tags=["Health"])
-async def health() -> dict[str, str]:
-    return {
-        "status": "healthy",
-    }
-
-
-# ==============================================================================
-# Startup Log
-# ==============================================================================
 
 logger.info(
     "Enterprise AI Platform initialized.",
     version=settings.APP_VERSION,
+    environment=settings.ENVIRONMENT.value,
 )
